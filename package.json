@@ -1,0 +1,23 @@
+{
+  "name": "hydro",
+  "version": "1.0.0",
+  "description": "Minimal hydration library",
+  "homepage": "https://github.com/QYUbit/hydro.js#readme",
+  "bugs": {
+    "url": "https://github.com/QYUbit/hydro.js/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QYUbit/hydro.js.git"
+  },
+  "license": "MIT",
+  "author": "QYUbit",
+  "type": "module",
+  "main": "index.js",
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "npx tsc"
+  }
+}
