@@ -1,13 +1,8 @@
 import { El, Els } from "./dom.js";
-import { effect, signal } from "./reactivity.js";
+import { effect } from "./reactivity.js";
 
-export type ComponentParams = {
-    ref: ComponentRef,
-    props: any,
-};
-
-export type ComponentFunc = ((prams: ComponentParams) => (() => void))
-    | ((params: ComponentParams) => void);
+export type ComponentFunc = ((ref: ComponentRef, props: any) => (() => void))
+    | ((ref: ComponentRef, props: any) => void);
 
 export interface ElementSelecter {
     querySelector<K extends keyof HTMLElementTagNameMap>(selectors: K): HTMLElementTagNameMap[K] | null;
@@ -55,60 +50,47 @@ export class ComponentRef {
     }
 }
 
-export const Hydro = {
-    components: new Map<string, ComponentFunc>(),
+const components = new Map<string, ComponentFunc>();
 
-    hydrate(root: ElementSelecter = document) {
-        root.querySelectorAll("[data-comp]").forEach((el) => {
-            if (!(el instanceof HTMLElement)) return;
+export function hydrate(root: ElementSelecter = document) {
+    root.querySelectorAll("[data-comp]").forEach((el) => {
+        if (!(el instanceof HTMLElement)) return;
 
-            const name = el.dataset.comp;
-            if (el.dataset.bound || !name) return;
-            
-            const cb = this.components.get(name);
-            if (!cb) return;
+        const name = el.dataset.comp;
+        if (el.dataset.bound || !name) return;
+        
+        const cb = components.get(name);
+        if (!cb) return;
 
-            const props = el.dataset.props
-                ? JSON.parse(el.dataset.props)
-                : {};
+        const props = el.dataset.props
+            ? JSON.parse(el.dataset.props)
+            : {};
 
+        const ref = new ComponentRef(el);
+        (el as BoundComponent).ref = ref;
+        
+        el.dataset.bound = "true";
 
-            const ref = new ComponentRef(el);
-            (el as BoundComponent).ref = ref;
-            
-            el.dataset.bound = "true";
-
-            const cleanup = cb({ ref, props });
-            cleanup && ref.addCleanup(cleanup);
-        });
-    },
-
-    destroy(root: ElementSelecter = document) {
-        root.querySelectorAll("[data-comp]").forEach((el) => {
-            if (!(el instanceof HTMLElement)) return;
-
-            const ref = (el as BoundComponent).ref;
-            if (!ref) return;
-
-            ref.cleanup();
-
-            // Remove ref from el?
-
-            delete el.dataset.bound;
-        });
-    },
-
-    component(selector: string, cb: ComponentFunc) {
-        this.components.set(selector, cb);
-    },
+        const cleanup = cb(ref, props);
+        cleanup && ref.addCleanup(cleanup);
+    });
 }
 
-Hydro.component("counter", ({ ref, props }) => {
-    const [count, setCount] = signal<number>(props.count || 0);
+export function destroy(root: ElementSelecter = document) {
+    root.querySelectorAll("[data-comp][data-bound]").forEach((el) => {
+        if (!(el instanceof HTMLElement)) return;
 
-    ref.$(".display")?.bindText(() => `Count: ${count()}`);
+        const ref = (el as BoundComponent).ref;
+        if (!ref) return;
 
-    ref.$("button")?.on("click", () => setCount(prev => prev + 1));
-});
+        ref.cleanup();
 
-Hydro.hydrate();
+        // Remove ref from el?
+
+        delete el.dataset.bound;
+    });
+}
+
+export function component(selector: string, cb: ComponentFunc) {
+    components.set(selector, cb);
+}

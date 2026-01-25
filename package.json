@@ -1,23 +1,26 @@
 {
-  "name": "hydro",
+  "name": "hydro-dom",
   "version": "1.0.0",
   "description": "Minimal hydration library",
-  "homepage": "https://github.com/QYUbit/hydro.js#readme",
+  "homepage": "https://github.com/QYUbit/Hydro#readme",
   "bugs": {
-    "url": "https://github.com/QYUbit/hydro.js/issues"
+    "url": "https://github.com/QYUbit/Hydro/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/QYUbit/hydro.js.git"
+    "url": "git+https://github.com/QYUbit/Hydro.git"
   },
   "license": "MIT",
   "author": "QYUbit",
   "type": "module",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "devDependencies": {
+    "esbuild": "^0.27.2",
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "npx tsc"
+    "build": "node scripts/build.js"
   }
 }

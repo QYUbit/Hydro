@@ -1,2 +1,2 @@
 import { Hydro } from "./hydro.js";
-export default Hydro;
+(window as any).Hydro = Hydro;
