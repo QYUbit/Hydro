@@ -1,5 +1,5 @@
 import { El, Els } from "./dom.js";
-import { effect } from "./reactivity.js";
+import { effect, scope } from "./reactivity.js";
 
 export type ComponentFunc = ((ref: ComponentRef, props: any) => (() => void))
     | ((ref: ComponentRef, props: any) => void);
@@ -52,24 +52,36 @@ export class ComponentRef {
 
 const components = new Map<string, ComponentFunc>();
 
+let compNameAttr = "comp";
+let compPropsAttr = "props";
+let compHydratedAttr = "hydrated";
+
+export function setComponentAttrName(name: string) {
+    compNameAttr = name;
+}
+
+export function setPropsAttrName(name: string) {
+    compPropsAttr = name;
+}
+
 export function hydrate(root: ElementSelecter = document) {
-    root.querySelectorAll("[data-comp]").forEach((el) => {
+    root.querySelectorAll(`[data-${compNameAttr}]`).forEach((el) => {
         if (!(el instanceof HTMLElement)) return;
 
-        const name = el.dataset.comp;
-        if (el.dataset.bound || !name) return;
+        const name = el.dataset[compNameAttr];
+        if (el.dataset[compHydratedAttr] || !name) return;
         
         const cb = components.get(name);
         if (!cb) return;
 
-        const props = el.dataset.props
-            ? JSON.parse(el.dataset.props)
+        const props = el.dataset[compPropsAttr]
+            ? JSON.parse(el.dataset[compPropsAttr] as string)
             : {};
 
         const ref = new ComponentRef(el);
         (el as BoundComponent).ref = ref;
         
-        el.dataset.bound = "true";
+        el.dataset[compHydratedAttr] = "true";
 
         const cleanup = cb(ref, props);
         cleanup && ref.addCleanup(cleanup);
@@ -77,7 +89,7 @@ export function hydrate(root: ElementSelecter = document) {
 }
 
 export function destroy(root: ElementSelecter = document) {
-    root.querySelectorAll("[data-comp][data-bound]").forEach((el) => {
+    root.querySelectorAll(`[data-${compNameAttr}][data-${compHydratedAttr}]`).forEach((el) => {
         if (!(el instanceof HTMLElement)) return;
 
         const ref = (el as BoundComponent).ref;
@@ -87,7 +99,7 @@ export function destroy(root: ElementSelecter = document) {
 
         // Remove ref from el?
 
-        delete el.dataset.bound;
+        delete el.dataset[compHydratedAttr];
     });
 }
 

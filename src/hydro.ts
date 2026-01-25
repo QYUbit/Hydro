@@ -1,4 +1,4 @@
-import { component, ComponentRef, destroy, hydrate } from "./component.js";
+import { component, ComponentRef, destroy, hydrate, setComponentAttrName, setPropsAttrName } from "./component.js";
 import { El, Els } from "./dom.js";
 import { computed, effect, ignore, scope, signal } from "./reactivity.js";
 
@@ -7,6 +7,8 @@ export const Hydro = {
     ComponentRef,
     hydrate,
     destroy,
+    setComponentAttrName,
+    setPropsAttrName,
 
     El,
     Els,

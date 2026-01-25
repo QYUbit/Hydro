@@ -103,6 +103,8 @@ export function ignore<T>(fn: () => T): T {
     }
 }
 
+// TODO Use scopes for components
+
 export function scope<T>(fn: (dispose: () => void) => T): T {
     const prevEffect = currentEffect;
     currentEffect = null;
