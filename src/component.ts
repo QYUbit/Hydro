@@ -1,5 +1,5 @@
 import { El, Els } from "./dom.js";
-import { effect, scope } from "./reactivity.js";
+import { effect } from "./reactivity.js";
 
 export type ComponentFunc = ((ref: ComponentRef, props: any) => (() => void))
     | ((ref: ComponentRef, props: any) => void);
@@ -10,30 +10,33 @@ export interface ElementSelecter {
 }
 
 export interface BoundComponent extends HTMLElement {
-    ref: ComponentRef;
+    ref?: ComponentRef;
 }
 
 export class ComponentRef {
-    private el: HTMLElement;
     private cleanups: (() => void)[] = [];
 
-    constructor(el: HTMLElement) {
-        this.el = el;
-    }
+    constructor(
+        public element: HTMLElement
+    ) {}
 
     root(): El {
-        return new El(this, this.el);
+        return new El(this, this.element);
     }
 
     $(selectors: string): El | null {
-        const el = this.el.querySelector(selectors);
+        const el = this.element.querySelector(selectors);
         if (!(el instanceof HTMLElement)) return null;
         return el ? new El(this, el) : null;
     }
 
     $$(selectors: string): Els {
-        const nodes = this.el.querySelectorAll(selectors);
+        const nodes = this.element.querySelectorAll(selectors);
         return new Els(this, Array.from(nodes).filter(el => el instanceof HTMLElement));
+    }
+
+    create(tag: string): El {
+        return new El(this, document.createElement(tag));
     }
 
     effect(fn: () => void, initRun: boolean = true) {
@@ -52,9 +55,10 @@ export class ComponentRef {
 
 const components = new Map<string, ComponentFunc>();
 
-let compNameAttr = "comp";
-let compPropsAttr = "props";
-let compHydratedAttr = "hydrated";
+export let compNameAttr = "comp";
+export let compPropsAttr = "props";
+export let compHydratedAttr = "hydrated";
+export let compLazyAttr = "lazy";
 
 export function setComponentAttrName(name: string) {
     compNameAttr = name;
@@ -64,12 +68,20 @@ export function setPropsAttrName(name: string) {
     compPropsAttr = name;
 }
 
+export function setLazyAttrName(name: string) {
+    compLazyAttr = name;
+}
+
+// TODO Lazy hydration
+
 export function hydrate(root: ElementSelecter = document) {
     root.querySelectorAll(`[data-${compNameAttr}]`).forEach((el) => {
         if (!(el instanceof HTMLElement)) return;
 
+        if (el.dataset[compHydratedAttr]) return;
+
         const name = el.dataset[compNameAttr];
-        if (el.dataset[compHydratedAttr] || !name) return;
+        if (!name) return;
         
         const cb = components.get(name);
         if (!cb) return;
@@ -97,8 +109,7 @@ export function destroy(root: ElementSelecter = document) {
 
         ref.cleanup();
 
-        // Remove ref from el?
-
+        delete (el as BoundComponent).ref
         delete el.dataset[compHydratedAttr];
     });
 }

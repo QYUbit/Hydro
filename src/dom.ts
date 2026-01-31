@@ -1,8 +1,8 @@
-import type { ComponentRef } from "./component.js";
+import { compPropsAttr, type ComponentRef } from "./component.js";
 
 abstract class ElBase {
     protected abstract ref: ComponentRef;
-    protected abstract applyToElements(fn: (el: HTMLElement) => void): this;
+    protected abstract applyToElements(fn: (el: HTMLElement, i: number) => void): this;
     
     // =================== Bindings ===================
     
@@ -21,81 +21,172 @@ abstract class ElBase {
         });
         return this;
     }
-    
-    bindChild(
-        getter: () => boolean,
-        mount: (el: HTMLElement) => (() => void) | void,
-    ): this {
+
+    bindValue(getter: () => any): this {
         this.ref.effect(() => {
-            let unmount: (() => void) | null = null;
+            const value = getter();
+            this.setValue(value);
+        });
+        return this;
+    }
+
+    bindShow(getter: () => boolean): this {
+        this.ref.effect(() => {
+            const show = getter();
+            this.applyToElements((el) => {
+                if ((el as any).__hydroShow === show) return;
+                (el as any).__hydroShow = show;
+                el.style.display = show ? "" : "none";
+            });
+        });
+        return this;
+    }
+
+    bindClass(getter: () => boolean, ...classNames: string[]): this {
+        this.ref.effect(() => {
+            const add = getter();
 
             this.applyToElements((el) => {
-                const shouldMount = getter();
-
-                if (shouldMount) {
-                    const ret = mount(el);
-                    if (ret) unmount = ret;
+                if (add) {
+                    el.classList.add(...classNames);
                 } else {
-                    if (unmount) unmount();
-                    unmount = null;
+                    el.classList.remove(...classNames);
                 }
             });
         });
         return this;
     }
 
-    bindChildren<T extends any>(
-        getter: () => T[],
-        mount: (el: HTMLElement, value: T, i: number) => (() => void) | void,
-    ): this {
+    bindStyle(property: string, getter: () => any): this {
         this.ref.effect(() => {
-            let unmounts: (() => void)[] = [];
+            const value = Array.isArray(getter()) ? getter() : property.split(" ");
 
             this.applyToElements((el) => {
-                unmounts.forEach(cb => cb());
-                unmounts = [];
+                el.style.setProperty(property, String(value));
+            });
+        });
+        return this;
+    }
+    
+    bindChild(
+        getter: () => boolean,
+        mount: (el: HTMLElement) => ((destroyed: boolean) => void) | void,
+    ): this {
+        let unmount: ((destroyed: boolean) => void) | null = null;
 
-                const values = getter();
+        this.ref.effect(() => {
+            const shouldMount = getter();
 
+            this.applyToElements((el) => {
+                if (shouldMount) {
+                    const ret = mount(el);
+                    if (ret) unmount = ret;
+                } else {
+                    if (unmount) unmount(false);
+                    unmount = null;
+                }
+            });
+        });
+
+        this.ref.addCleanup(() => {
+            if (unmount) unmount(true);
+            unmount = null; // Should not be necessary
+        });
+        return this;
+    }
+
+    bindChildren<T>(
+        getter: () => T[],
+        mount: (
+            el: HTMLElement,
+            value: T,
+            i: number,
+        ) => ((destroyed: boolean) => void) | void,
+    ): this {
+        let unmounts: ((destroyed: boolean) => void)[] = [];
+
+        this.ref.effect(() => {
+            unmounts.forEach(cb => cb(false));
+            unmounts = [];
+
+            const values = getter();
+
+            this.applyToElements((el) => {
                 values.forEach((value, i) => {
                     const unmount = mount(el, value, i);
                     if (unmount) unmounts.push(unmount);
                 });
             });
         });
+
+        this.ref.addCleanup(() => {
+            unmounts.forEach(cb => cb(true));
+            unmounts = [];
+        });
         return this;
     }
 
-    bindKeyedChildren<T extends any, K extends any>(
+    bindKeyedChildren<T>(
         getter: () => T[],
-        keyFn: (value: T, i: number) => K,
-        mount: (el: HTMLElement, value: T, i: number) => (() => void) | void,
+        keyFn: (value: T, i: number) => string,
+        mount: (
+            el: HTMLElement,
+            value: T,
+            i: number,
+        ) => ((destroyed: boolean) => void) | void,
     ): this {
+        const unmountsByElement = new Map<
+            HTMLElement,
+            Map<string, ((destroyed: boolean) => void) | null>
+        >();
+
         this.ref.effect(() => {
-            const unmounts = new Map<K, (() => void) | null>();
+            const values = getter();
+            const keys = values.map((v, i) => keyFn(v, i));
+            const keySet = new Set(keys);
 
             this.applyToElements((el) => {
-                const values = getter();
-
-                const keys = values.map((value, i) => keyFn(value, i));
+                let unmounts = unmountsByElement.get(el);
+                if (!unmounts) {
+                    unmounts = new Map();
+                    unmountsByElement.set(el, unmounts);
+                }
 
                 const prevKeys = Array.from(unmounts.keys());
 
-                const keysToRemove = prevKeys.filter(key => !keys.includes(key));
-
-                keysToRemove.forEach((key) => {
-                    const unmount = unmounts.get(key);
-                    if (unmount) unmount();
-                    unmounts.delete(key);
+                prevKeys.forEach((key) => {
+                    if (!keySet.has(key)) {
+                        const unmount = unmounts!.get(key);
+                        if (unmount) unmount(false);
+                        unmounts!.delete(key);
+                    }
                 });
 
+                const sameOrder =
+                    prevKeys.length === keys.length &&
+                    prevKeys.every((k, i) => k === keys[i]);
+
+                if (!sameOrder) {
+                    unmounts.forEach(cb => cb && cb(false));
+                    unmounts.clear();
+                }
+
                 keys.forEach((key, i) => {
-                    if (unmounts.has(key)) return;
+                    if (unmounts!.has(key)) return;
                     const unmount = mount(el, values[i] as T, i);
-                    unmounts.set(key, unmount ?? null);
+                    unmounts!.set(key, unmount ?? null);
                 });
             });
         });
+
+        this.ref.addCleanup(() => {
+            unmountsByElement.forEach((map) => {
+                map.forEach(cb => cb && cb(true));
+                map.clear();
+            });
+            unmountsByElement.clear();
+        });
+
         return this;
     }
     
@@ -113,6 +204,27 @@ abstract class ElBase {
     
     removeAttr(name: string): this {
         this.applyToElements(el => el.removeAttribute(name));
+        return this;
+    }
+
+    setValue(value: any): this {
+        this.applyToElements((el) => {
+            if (!(el instanceof HTMLInputElement)) return;
+
+            if (el.type === "checkbox") {
+                if (el.checked !== value) {
+                    el.checked = !!value
+                }
+            } else if (el.type === "radio") {
+                if (el.checked !== (el.value === String(value))) {
+                    el.checked = el.value === String(value)
+                }
+            } else {
+                if (el.value !== String(value || "")) {
+                    el.value = String(value || "")
+                }
+            }
+        });
         return this;
     }
 
@@ -136,6 +248,18 @@ abstract class ElBase {
         });
         return this;
     }
+
+    setStyle(property: string, value: any): this {
+        this.applyToElements((el) => {
+            el.style.setProperty(property, String(value));
+        });
+        return this;
+    }
+
+    setProps(value: any) {
+        this.applyToElements((el) =>
+            el.dataset[compPropsAttr] = JSON.stringify(value));
+    }
 }
 
 export class El extends ElBase {
@@ -149,8 +273,8 @@ export class El extends ElBase {
         this.ref = ref;
     }
     
-    protected applyToElements(fn: (el: HTMLElement) => void): this {
-        fn(this.element);
+    protected applyToElements(fn: (el: HTMLElement, i: number) => void): this {
+        fn(this.element, 0);
         return this;
     }
 
@@ -163,9 +287,39 @@ export class El extends ElBase {
     getAttr(name: string): string | null {
         return this.element.getAttribute(name);
     }
+
+    getValue(): string | null {
+        if (!(this.element instanceof HTMLInputElement)) return null;
+        return this.element.value;
+    }
+
+    getNumberValue(): number | null {
+        if (!(this.element instanceof HTMLInputElement)) return null;
+        return this.element.valueAsNumber;
+    }
+
+    getDateValue(): Date | null {
+        if (!(this.element instanceof HTMLInputElement)) return null;
+        return this.element.valueAsDate;
+    }
+
+    isChecked(): boolean {
+        if (!(this.element instanceof HTMLInputElement)) return false;
+        return this.element.checked;
+    }
     
     hasClass(className: string): boolean {
         return this.element.classList.contains(className);
+    }
+
+    getStyle(property: string): string {
+        return this.element.style.getPropertyValue(property);
+    }
+
+    getProps(): any {
+        return this.element.dataset[compPropsAttr]
+            ? JSON.parse(this.element.dataset[compPropsAttr]!)
+            : {};
     }
 
     // =================== Events ===================
@@ -203,7 +357,7 @@ export class Els extends ElBase {
         this.ref = ref;
     }
     
-    protected applyToElements(fn: (el: HTMLElement) => void): this {
+    protected applyToElements(fn: (el: HTMLElement, i: number) => void): this {
         this.elements.forEach(fn);
         return this;
     }
@@ -223,6 +377,8 @@ export class Els extends ElBase {
         });
         return this;
     }
+
+    // TODO Off & Dispatch
 
     // =================== Array ===================
 
