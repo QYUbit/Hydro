@@ -5,8 +5,6 @@ Hydro.component("counter", (ref, props) => {
     ref.$(".display").bindText(() => `Count: ${count()}`);
 });
 
-// Approach 1: The user takes care of mounting and unmounting.
-
 Hydro.component("todo-list", (ref) => {
     const [todos, setTodos] = Hydro.signal([]);
     const [input, setInput] = Hydro.signal("");

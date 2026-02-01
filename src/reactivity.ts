@@ -26,13 +26,13 @@ export function signal<T>(initialValue: T): [() => T, (value: T | ((prev: T) => 
         return signal.value;
     };
 
-    const setter = (nextValue: T | ((prev: T) => T)) => {
+    const setter = (nextValue: T | ((prev: T) => T), equals = Object.is) => {
         const newValue =
         typeof nextValue === "function"
             ? (nextValue as ((prev: T) => T))(signal.value)
             : nextValue;
 
-        if (!Object.is(signal.value, newValue)) {
+        if (!equals(signal.value, newValue)) {
             signal.value = newValue;
             signal.subs.forEach(sub => schedule(sub.run));
         }
@@ -42,10 +42,27 @@ export function signal<T>(initialValue: T): [() => T, (value: T | ((prev: T) => 
 }
 
 export function computed<T>(fn: () => T): () => T {
-    const [getter, setter] = signal(undefined as T);
+    let value: T;
+    let dirty = true;
+    
+    const getter = () => {
+        if (dirty) {
+            if (currentEffect) {
+                const prevEffect = currentEffect;
+                currentEffect = null;
+                value = fn();
+                currentEffect = prevEffect;
+            } else {
+                value = fn();
+            }
+            dirty = false;
+        }
+        return value;
+    };
     
     effect(() => {
-        setter(fn());
+        fn();
+        dirty = true;
     });
     
     return getter;
@@ -146,9 +163,9 @@ function schedule(job: () => void): void {
 }
 
 function flush(): void {
-    for (let i = 0; i < queue.length; i++) {
-        if (queue[i]) (queue[i] as () => void)();
+    while (queue.length > 0) {
+        const jobs = queue.splice(0, queue.length);
+        jobs.forEach(job => job());
     }
-    queue.length = 0;
     flushing = false;
 }

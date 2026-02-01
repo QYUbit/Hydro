@@ -1,8 +1,8 @@
 import { El, Els } from "./dom.js";
 import { effect } from "./reactivity.js";
 
-export type ComponentFunc = ((ref: ComponentRef, props: any) => (() => void))
-    | ((ref: ComponentRef, props: any) => void);
+export type ComponentFunc<P> = ((ref: ComponentRef, props: P) => (() => void))
+    | ((ref: ComponentRef, props: P) => void);
 
 export interface ElementSelecter {
     querySelector<K extends keyof HTMLElementTagNameMap>(selectors: K): HTMLElementTagNameMap[K] | null;
@@ -53,7 +53,7 @@ export class ComponentRef {
     }
 }
 
-const components = new Map<string, ComponentFunc>();
+const components = new Map<string, ComponentFunc<any>>();
 
 export let compNameAttr = "comp";
 export let compPropsAttr = "props";
@@ -77,7 +77,6 @@ export function setLazyAttrName(name: string) {
 export function hydrate(root: ElementSelecter = document) {
     root.querySelectorAll(`[data-${compNameAttr}]`).forEach((el) => {
         if (!(el instanceof HTMLElement)) return;
-
         if (el.dataset[compHydratedAttr]) return;
 
         const name = el.dataset[compNameAttr];
@@ -86,17 +85,28 @@ export function hydrate(root: ElementSelecter = document) {
         const cb = components.get(name);
         if (!cb) return;
 
-        const props = el.dataset[compPropsAttr]
-            ? JSON.parse(el.dataset[compPropsAttr] as string)
-            : {};
+        let props = {};
+        const rawProps = el.dataset[compPropsAttr]; 
+        if (rawProps) {
+            try {
+                props = JSON.parse(rawProps);
+            } catch (err) {
+                console.error(`Failed to parse props for component "${name}":`, err);
+            }
+        }
 
         const ref = new ComponentRef(el);
         (el as BoundComponent).ref = ref;
-        
-        el.dataset[compHydratedAttr] = "true";
 
-        const cleanup = cb(ref, props);
-        cleanup && ref.addCleanup(cleanup);
+        try {
+            const cleanup = cb(ref, props);
+            cleanup && ref.addCleanup(cleanup);
+        } catch (error) {
+            console.error(`An error occured while hydrating component "${name}":`, error);
+            ref.cleanup();
+        }
+
+        el.dataset[compHydratedAttr] = "true";
     });
 }
 
@@ -114,6 +124,9 @@ export function destroy(root: ElementSelecter = document) {
     });
 }
 
-export function component(selector: string, cb: ComponentFunc) {
-    components.set(selector, cb);
+export function component<P>(name: string, cb: ComponentFunc<P>) {
+    if (components.has(name)) {
+        console.warn(`Duplicate component definition "${name}"`);
+    }
+    components.set(name, cb);
 }

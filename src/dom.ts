@@ -1,4 +1,4 @@
-import { compPropsAttr, type ComponentRef } from "./component.js";
+import { ComponentRef } from "./component.js";
 
 abstract class ElBase {
     protected abstract ref: ComponentRef;
@@ -90,7 +90,7 @@ abstract class ElBase {
 
         this.ref.addCleanup(() => {
             if (unmount) unmount(true);
-            unmount = null; // Should not be necessary
+            unmount = null;
         });
         return this;
     }
@@ -102,39 +102,15 @@ abstract class ElBase {
             value: T,
             i: number,
         ) => ((destroyed: boolean) => void) | void,
+        options?: {
+            key?: (value: T, i: number) => string;
+            ignoreOrder?: boolean;
+        },
     ): this {
-        let unmounts: ((destroyed: boolean) => void)[] = [];
+        const keyed = !!options?.key;
 
-        this.ref.effect(() => {
-            unmounts.forEach(cb => cb(false));
-            unmounts = [];
+        const keyFn = keyed ? options.key! : (_: T, i: number) => String(i);
 
-            const values = getter();
-
-            this.applyToElements((el) => {
-                values.forEach((value, i) => {
-                    const unmount = mount(el, value, i);
-                    if (unmount) unmounts.push(unmount);
-                });
-            });
-        });
-
-        this.ref.addCleanup(() => {
-            unmounts.forEach(cb => cb(true));
-            unmounts = [];
-        });
-        return this;
-    }
-
-    bindKeyedChildren<T>(
-        getter: () => T[],
-        keyFn: (value: T, i: number) => string,
-        mount: (
-            el: HTMLElement,
-            value: T,
-            i: number,
-        ) => ((destroyed: boolean) => void) | void,
-    ): this {
         const unmountsByElement = new Map<
             HTMLElement,
             Map<string, ((destroyed: boolean) => void) | null>
@@ -142,7 +118,8 @@ abstract class ElBase {
 
         this.ref.effect(() => {
             const values = getter();
-            const keys = values.map((v, i) => keyFn(v, i));
+            const keys = values.map((v, i) => keyFn(v, i))
+
             const keySet = new Set(keys);
 
             this.applyToElements((el) => {
@@ -162,11 +139,16 @@ abstract class ElBase {
                     }
                 });
 
-                const sameOrder =
-                    prevKeys.length === keys.length &&
-                    prevKeys.every((k, i) => k === keys[i]);
+                if (keyed) {
+                    const sameOrder =
+                        prevKeys.length === keys.length &&
+                        prevKeys.every((k, i) => k === keys[i]);
 
-                if (!sameOrder) {
+                    if (!sameOrder && options?.ignoreOrder) {
+                        unmounts.forEach(cb => cb && cb(false));
+                        unmounts.clear();
+                    }
+                } else {
                     unmounts.forEach(cb => cb && cb(false));
                     unmounts.clear();
                 }
@@ -209,19 +191,27 @@ abstract class ElBase {
 
     setValue(value: any): this {
         this.applyToElements((el) => {
-            if (!(el instanceof HTMLInputElement)) return;
-
-            if (el.type === "checkbox") {
-                if (el.checked !== value) {
-                    el.checked = !!value
+            if (el instanceof HTMLInputElement) {
+                if (el.type === "checkbox") {
+                    if (el.checked !== value) {
+                        el.checked = !!value
+                    }
+                } else if (el.type === "radio") {
+                    if (el.checked !== (el.value === String(value))) {
+                        el.checked = el.value === String(value)
+                    }
+                } else {
+                    if (el.value !== String(value || "")) {
+                        el.value = String(value || "")
+                    }
                 }
-            } else if (el.type === "radio") {
-                if (el.checked !== (el.value === String(value))) {
-                    el.checked = el.value === String(value)
-                }
-            } else {
+            } else if (el instanceof HTMLTextAreaElement) {
                 if (el.value !== String(value || "")) {
-                    el.value = String(value || "")
+                    el.value = String(value || "");
+                }
+            } else if (el instanceof HTMLSelectElement) {
+                if (el.value !== String(value || "")) {
+                    el.value = String(value || "");
                 }
             }
         });
@@ -255,11 +245,6 @@ abstract class ElBase {
         });
         return this;
     }
-
-    setProps(value: any) {
-        this.applyToElements((el) =>
-            el.dataset[compPropsAttr] = JSON.stringify(value));
-    }
 }
 
 export class El extends ElBase {
@@ -289,7 +274,11 @@ export class El extends ElBase {
     }
 
     getValue(): string | null {
-        if (!(this.element instanceof HTMLInputElement)) return null;
+        if (!(
+            this.element instanceof HTMLInputElement
+            || this.element instanceof HTMLTextAreaElement
+            || this.element instanceof HTMLSelectElement
+        )) return null;
         return this.element.value;
     }
 
@@ -314,12 +303,6 @@ export class El extends ElBase {
 
     getStyle(property: string): string {
         return this.element.style.getPropertyValue(property);
-    }
-
-    getProps(): any {
-        return this.element.dataset[compPropsAttr]
-            ? JSON.parse(this.element.dataset[compPropsAttr]!)
-            : {};
     }
 
     // =================== Events ===================

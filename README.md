@@ -11,7 +11,7 @@ Think of it as "Mini-Astro" for **any** backend, whether you use Go, Rust, Node,
 - DOM helpers
 - Fine grained reactivity
 - Compatibility with other frameworks
-- 1.6 KB bundle size (minified + gziped)
+- 2.2 KB bundle size (minified + gziped)
 
 ## Installation
 

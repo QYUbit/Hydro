@@ -4,7 +4,9 @@ import fs from "node:fs";
 import zlib from "node:zlib"; 
 
 try {
-    fs.rmSync("./dist", { recursive: true });
+    if (fs.existsSync("./dist")) {
+        fs.rmSync("./dist", { recursive: true });
+    }
     
     execSync("npx tsc");
 
