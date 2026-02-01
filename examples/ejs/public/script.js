@@ -15,7 +15,7 @@ Hydro.component("todo-list", (ref) => {
     inputEl.on("input", () => setInput(inputEl.getValue()));
     
     ref.$("button").on("click", () => {
-        setTodos(prev => [...prev, input]);
+        setTodos(prev => [...prev, input()]);
         setInput("");
     });
 
