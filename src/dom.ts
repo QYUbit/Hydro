@@ -42,15 +42,17 @@ abstract class ElBase {
         return this;
     }
 
-    bindClass(getter: () => boolean, ...classNames: string[]): this {
+    bindClass(classNames: string | string[], getter: () => boolean): this {
+        const classes = Array.isArray(classNames) ? classNames : classNames.split(" ");
+
         this.ref.effect(() => {
             const add = getter();
 
             this.applyToElements((el) => {
                 if (add) {
-                    el.classList.add(...classNames);
+                    el.classList.add(...classes);
                 } else {
-                    el.classList.remove(...classNames);
+                    el.classList.remove(...classes);
                 }
             });
         });
@@ -59,7 +61,7 @@ abstract class ElBase {
 
     bindStyle(property: string, getter: () => any): this {
         this.ref.effect(() => {
-            const value = Array.isArray(getter()) ? getter() : property.split(" ");
+            const value = getter();
 
             this.applyToElements((el) => {
                 el.style.setProperty(property, String(value));
